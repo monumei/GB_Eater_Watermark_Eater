@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="GB_Eater.Application.MainWindow"
+        Title="GoodBoi Watermark Eater"
+        Width="1000" Height="700"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid ColumnDefinitions="300, *" Margin="10">
+        <!-- Sidebar -->
+        <Border Grid.Column="0" Background="#262626" CornerRadius="8" Padding="15">
+            <StackPanel Spacing="15">
+                <TextBlock Text="GB Eater" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White"/>
+                
+                <Separator Background="#444"/>
+
+                <Button Name="BtnLoad" Content="📂 Load Image" HorizontalAlignment="Stretch" Click="OnLoadClick"/>
+                <Button Name="BtnSave" Content="💾 Save Image" HorizontalAlignment="Stretch" Click="OnSaveClick" IsEnabled="False"/>
+                
+                <Separator Background="#444"/>
+                
+                <TextBlock Text="🛡 Protection Mode" FontWeight="SemiBold"/>
+                <ComboBox Name="CmbMode" HorizontalAlignment="Stretch" SelectedIndex="1">
+                    <ComboBoxItem>Soft</ComboBoxItem>
+                    <ComboBoxItem>Balanced</ComboBoxItem>
+                    <ComboBoxItem>Strong</ComboBoxItem>
+                </ComboBox>
+                
+                <DockPanel>
+                    <TextBlock Text="Strength:" DockPanel.Dock="Left"/>
+                    <TextBlock Text="{Binding #SliderStrength.Value, StringFormat={}{0:0}}" DockPanel.Dock="Right" FontWeight="Bold"/>
+
+                </DockPanel>
+                <Slider Name="SliderStrength" Minimum="0" Maximum="50" Value="25" TickFrequency="1" IsSnapToTickEnabled="True"/>
+
+                <Separator Background="#444"/>
+                
+                <CheckBox Name="ChkWatermark" Content="Add Watermark" IsChecked="False"/>
+                <TextBox Name="TxtWatermark" Watermark="Watermark Text" Text="DO NOT TRAIN" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+                
+                <DockPanel>
+                    <TextBlock Text="Opacity:" DockPanel.Dock="Left"/>
+                    <TextBlock Text="{Binding #SliderOpacity.Value, StringFormat={}{0:0}}%" DockPanel.Dock="Right" FontWeight="Bold"/>
+
+                </DockPanel>
+                <Slider Name="SliderOpacity" Minimum="0" Maximum="100" Value="20" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+
+                <Separator Background="#444"/>
+
+                <Button Name="BtnProtect" Content="⚡ PREVIEW &amp; APPLY" HorizontalAlignment="Stretch" Click="OnProtectClick" Background="#3A6EA5" Foreground="White" FontWeight="Bold" Padding="10"/>
+                
+                <TextBlock Text="Processing may take a moment for large images." FontSize="10" Foreground="Gray" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Preview -->
+        <Border Grid.Column="1" Margin="10,0,0,0" Background="#1E1E1E" CornerRadius="8" ClipToBounds="True" Padding="10">
+             <Image Name="PreviewImage" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Border>
+    </Grid>
+</Window>
