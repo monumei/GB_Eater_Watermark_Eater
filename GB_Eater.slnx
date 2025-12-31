@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="GB_Eater.Application/GB_Eater.Application.csproj" />
+  <Project Path="GB_Eater.Windows/GB_Eater.Windows.csproj" />
+</Solution>
