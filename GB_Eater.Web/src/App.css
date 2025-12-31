@@ -1,51 +1,77 @@
 :root {
-  --bg-color: #121212;
-  --surface-color: #1e1e1e;
-  --primary-color: #3b82f6; /* Modern Blue */
-  --text-color: #e5e5e5;
-  --secondary-text: #a3a3a3;
-  --border-color: #333;
-  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  /* Default Dark Theme Variables */
+  --bg-color: #0f172a;
+  --surface-color: rgba(30, 41, 59, 0.7); /* Glassy dark blue */
+  --primary-color: #3b82f6;
+  --text-color: #f8fafc;
+  --secondary-text: #94a3b8;
+  --border-color: rgba(148, 163, 184, 0.2);
+  --accent-gradient: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  --page-gradient: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  --shadow-color: rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Light Theme Variables */
+    --bg-color: #f0f9ff;
+    --surface-color: rgba(255, 255, 255, 0.85); /* Glassy white */
+    --primary-color: #2563eb;
+    --text-color: #0f172a;
+    --secondary-text: #475569;
+    --border-color: rgba(59, 130, 246, 0.2);
+    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --page-gradient: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+    --shadow-color: rgba(59, 130, 246, 0.15);
+  }
 }
 
 body {
-  background-color: var(--bg-color);
+  background: var(--page-gradient);
   color: var(--text-color);
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   margin: 0;
   display: flex;
   justify-content: center;
   min-height: 100vh;
+  /* Fix gradient banding */
+  background-attachment: fixed;
 }
 
 #root {
   width: 100%;
   max-width: 1280px;
-  padding: 2rem;
+  padding: 1.5rem;
   box-sizing: border-box;
+  display: flex; /* Ensure centering works well with min-height */
+  flex-direction: column;
 }
 
 .container {
   display: grid;
   grid-template-columns: 350px 1fr;
-  gap: 2rem;
-  height: calc(100vh - 4rem);
+  gap: 1.5rem;
+  height: calc(100vh - 3rem); /* Full height minus padding */
+  width: 100%;
 }
 
 .sidebar {
   background: var(--surface-color);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px var(--shadow-color);
   overflow-y: auto;
+  z-index: 10;
 }
 
 .preview-area {
-  background: #000;
+  background: rgba(0, 0, 0, 0.2); /* Slight tint for contrast */
   border-radius: 16px;
   border: 1px dashed var(--border-color);
   display: flex;
@@ -53,18 +79,26 @@ body {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 20px var(--shadow-color);
+}
+
+/* Light mode specific adjustment for preview area */
+@media (prefers-color-scheme: light) {
+  .preview-area {
+    background: rgba(255, 255, 255, 0.5);
+    border-style: solid;
+  }
 }
 
 .preview-canvas {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 20px var(--shadow-color);
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   margin: 0;
   background: var(--accent-gradient);
   background-clip: text;
@@ -95,19 +129,34 @@ input[type="range"] {
 
 input[type="text"],
 select {
-  background: #2a2a2a;
+  background: rgba(0, 0, 0, 0.2);
   border: 1px solid var(--border-color);
-  color: white;
+  color: var(--text-color);
   padding: 0.75rem;
   border-radius: 8px;
   font-size: 0.9rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.2s;
+}
+
+@media (prefers-color-scheme: light) {
+  input[type="text"],
+  select {
+    background: rgba(255, 255, 255, 0.6);
+  }
 }
 
 input[type="text"]:focus,
 select:focus {
   border-color: var(--primary-color);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: light) {
+    input[type="text"]:focus,
+    select:focus {
+      background: rgba(255, 255, 255, 0.9);
+    }
 }
 
 .file-input-wrapper {
@@ -119,7 +168,7 @@ select:focus {
 .btn {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
-  color: white;
+  color: var(--text-color);
   padding: 0.75rem 1rem;
   border-radius: 8px;
   cursor: pointer;
@@ -129,17 +178,26 @@ select:focus {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  backdrop-filter: blur(4px);
 }
 
 .btn:hover {
-  background: #2a2a2a;
+  background: rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
+  border-color: var(--primary-color);
+}
+
+@media (prefers-color-scheme: light) {
+    .btn:hover {
+        background: rgba(255, 255, 255, 1);
+    }
 }
 
 .btn-primary {
   background: var(--accent-gradient);
   border: none;
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+  color: #fff !important; /* Always white text on primary button */
+  box-shadow: 0 4px 15px var(--shadow-color);
 }
 
 .btn-primary:active {
@@ -150,12 +208,14 @@ select:focus {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  filter: grayscale(0.5);
 }
 
 .divider {
   height: 1px;
   background: var(--border-color);
   margin: 0.5rem 0;
+  opacity: 0.5;
 }
 
 .switch-wrapper {
@@ -175,6 +235,7 @@ select:focus {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  background: rgba(0,0,0,0.1);
 }
 
 input[type="checkbox"]:checked + .checkbox-visual {
@@ -199,4 +260,64 @@ input[type="checkbox"]:checked + .checkbox-visual::after {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* ==========================================================================
+   Responsive Styles
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  #root {
+    padding: 1rem;
+    height: auto; /* Allow growth */
+    min-height: 100vh;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column-reverse; /* Put controls below preview on mobile if desired, or simpler column */
+    /* Let's stay standard column: Preview on top? Or sidebar on top? 
+       Usually sidebar controls are important but preview is key.
+       Let's put Preview FIRST on mobile so they see image, then controls below.
+    */
+    flex-direction: column;
+    height: auto;
+    gap: 1.5rem;
+  }
+
+  /* But wait, in the HTML structure: sidebar comes first, then preview-area.
+     We need reverse column to put preview on top, OR manipulate order.
+  */
+  .container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    order: 2; /* Controls below */
+    box-sizing: border-box;
+  }
+
+  .preview-area {
+    width: 100%;
+    height: 50vh; /* Fixed height for preview on mobile */
+    min-height: 300px;
+    order: 1; /* Preview on top */
+  }
+}
+
+@media (max-width: 480px) {
+  .preview-area {
+    height: 40vh;
+    min-height: 250px;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+    text-align: center;
+  }
 }

@@ -11,56 +11,65 @@
     <Grid ColumnDefinitions="300, *" Margin="10">
         <!-- Sidebar -->
         <Border Grid.Column="0" Background="#262626" CornerRadius="8" Padding="15">
-            <StackPanel Spacing="15">
-                <TextBlock Text="GB Eater" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White"/>
-                
-                <Separator Background="#444"/>
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Header -->
+                <StackPanel Grid.Row="0" Spacing="15" Margin="0,0,0,15">
+                    <TextBlock Text="GB Eater" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White"/>
+                    <Separator Background="#444"/>
+                </StackPanel>
 
-                <Button Name="BtnLoad" Content="📂 Load Image" HorizontalAlignment="Stretch" Click="OnLoadClick"/>
-                <Button Name="BtnSave" Content="💾 Save Image" HorizontalAlignment="Stretch" Click="OnSaveClick" IsEnabled="False"/>
-                
-                <Separator Background="#444"/>
-                
-                <TextBlock Text="🛡 Protection Mode" FontWeight="SemiBold"/>
-                <ComboBox Name="CmbMode" HorizontalAlignment="Stretch" SelectedIndex="1">
-                    <ComboBoxItem>Soft</ComboBoxItem>
-                    <ComboBoxItem>Balanced</ComboBoxItem>
-                    <ComboBoxItem>Strong</ComboBoxItem>
-                    <ComboBoxItem>AI Poison (Slow)</ComboBoxItem>
-                </ComboBox>
-                
-                <DockPanel>
-                    <TextBlock Text="Strength:" DockPanel.Dock="Left"/>
-                    <TextBlock Text="{Binding #SliderStrength.Value, StringFormat={}{0:0}}" DockPanel.Dock="Right" FontWeight="Bold"/>
+                <!-- Scrollable Settings -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                    <StackPanel Spacing="15">
+                        <Button Name="BtnLoad" Content="📂 Load Image" HorizontalAlignment="Stretch" Click="OnLoadClick"/>
+                        <Button Name="BtnSave" Content="💾 Save Image" HorizontalAlignment="Stretch" Click="OnSaveClick" IsEnabled="False"/>
 
-                </DockPanel>
-                <Slider Name="SliderStrength" Minimum="0" Maximum="50" Value="25" TickFrequency="1" IsSnapToTickEnabled="True"/>
+                        <Separator Background="#444"/>
 
-                <Separator Background="#444"/>
-                
-                <CheckBox Name="ChkWatermark" Content="Add Watermark" IsChecked="False"/>
-                <!-- Text Watermark Removed -->
-                <Button Name="BtnUploadWatermark" Content="📂 Upload Logo/Sig" Click="OnUploadWatermarkClick" IsEnabled="{Binding #ChkWatermark.IsChecked}" Margin="0,5,0,0"/>
+                        <TextBlock Text="🛡 Protection Mode" FontWeight="SemiBold"/>
+                        <ComboBox Name="CmbMode" HorizontalAlignment="Stretch" SelectedIndex="1">
+                            <ComboBoxItem>Soft</ComboBoxItem>
+                            <ComboBoxItem>Balanced</ComboBoxItem>
+                            <ComboBoxItem>Strong</ComboBoxItem>
+                            <ComboBoxItem>AI Poison (Slow)</ComboBoxItem>
+                        </ComboBox>
 
-                <DockPanel>
-                    <TextBlock Text="Size:" DockPanel.Dock="Left"/>
-                    <TextBlock Text="{Binding #SliderWatermarkSize.Value, StringFormat={}{0:P0}}" DockPanel.Dock="Right" FontWeight="Bold"/>
+                        <DockPanel>
+                            <TextBlock Text="Strength:" DockPanel.Dock="Left"/>
+                            <TextBlock Text="{Binding #SliderStrength.Value, StringFormat={}{0:0}}" DockPanel.Dock="Right" FontWeight="Bold"/>
+                        </DockPanel>
+                        <Slider Name="SliderStrength" Minimum="0" Maximum="50" Value="25" TickFrequency="1" IsSnapToTickEnabled="True"/>
 
-                </DockPanel>
-                <Slider Name="SliderWatermarkSize" Minimum="0.1" Maximum="3.0" Value="1.0" TickFrequency="0.1" IsSnapToTickEnabled="True" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+                        <Separator Background="#444"/>
 
-                <DockPanel>
-                    <TextBlock Text="Opacity:" DockPanel.Dock="Left"/>
-                    <TextBlock Text="{Binding #SliderOpacity.Value, StringFormat={}{0:0}}%" DockPanel.Dock="Right" FontWeight="Bold"/>
-                </DockPanel>
-                <Slider Name="SliderOpacity" Minimum="0" Maximum="100" Value="20" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+                        <CheckBox Name="ChkWatermark" Content="Add Watermark" IsChecked="False"/>
+                        <!-- Text Watermark Removed -->
+                        <Button Name="BtnUploadWatermark" Content="📂 Upload Logo/Sig" Click="OnUploadWatermarkClick" IsEnabled="{Binding #ChkWatermark.IsChecked}" Margin="0,5,0,0"/>
 
-                <Separator Background="#444"/>
+                        <DockPanel>
+                            <TextBlock Text="Size:" DockPanel.Dock="Left"/>
+                            <TextBlock Text="{Binding #SliderWatermarkSize.Value, StringFormat={}{0:P0}}" DockPanel.Dock="Right" FontWeight="Bold"/>
 
-                <Button Name="BtnProtect" Content="⚡ PREVIEW &amp; APPLY" HorizontalAlignment="Stretch" Click="OnProtectClick" Background="#3A6EA5" Foreground="White" FontWeight="Bold" Padding="10"/>
-                
-                <TextBlock Text="Processing may take a moment for large images." FontSize="10" Foreground="Gray" TextWrapping="Wrap" HorizontalAlignment="Center"/>
-            </StackPanel>
+                        </DockPanel>
+                        <Slider Name="SliderWatermarkSize" Minimum="0.1" Maximum="3.0" Value="1.0" TickFrequency="0.1" IsSnapToTickEnabled="True" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+
+                        <DockPanel>
+                            <TextBlock Text="Opacity:" DockPanel.Dock="Left"/>
+                            <TextBlock Text="{Binding #SliderOpacity.Value, StringFormat={}{0:0}}%" DockPanel.Dock="Right" FontWeight="Bold"/>
+                        </DockPanel>
+                        <Slider Name="SliderOpacity" Minimum="0" Maximum="100" Value="20" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Footer -->
+                <StackPanel Grid.Row="2" Spacing="15" Margin="0,15,0,0">
+                    <Separator Background="#444"/>
+
+                    <Button Name="BtnProtect" Content="⚡ PREVIEW &amp; APPLY" HorizontalAlignment="Stretch" Click="OnProtectClick" Background="#3A6EA5" Foreground="White" FontWeight="Bold" Padding="10"/>
+
+                    <TextBlock Text="Processing may take a moment for large images." FontSize="10" Foreground="Gray" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Preview -->

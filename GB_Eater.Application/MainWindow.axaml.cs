@@ -142,7 +142,47 @@ public partial class MainWindow : Window
         _viewTranslateTransform.X = pointerPos.X - (relativePos.X * newScale);
         _viewTranslateTransform.Y = pointerPos.Y - (relativePos.Y * newScale);
         
+        ClampView();
+
         e.Handled = true;
+    }
+
+    private void ClampView()
+    {
+        if (_viewTranslateTransform == null || _viewScaleTransform == null) return;
+
+        var bounds = PreviewContainer.Bounds;
+        var scale = _viewScaleTransform.ScaleX;
+
+        double zoomedW = bounds.Width * scale;
+        double zoomedH = bounds.Height * scale;
+
+        double minX, maxX;
+        if (zoomedW > bounds.Width)
+        {
+            maxX = 0;
+            minX = bounds.Width - zoomedW;
+        }
+        else
+        {
+            minX = 0;
+            maxX = bounds.Width - zoomedW;
+        }
+
+        double minY, maxY;
+        if (zoomedH > bounds.Height)
+        {
+            maxY = 0;
+            minY = bounds.Height - zoomedH;
+        }
+        else
+        {
+            minY = 0;
+            maxY = bounds.Height - zoomedH;
+        }
+
+        _viewTranslateTransform.X = Math.Max(minX, Math.Min(maxX, _viewTranslateTransform.X));
+        _viewTranslateTransform.Y = Math.Max(minY, Math.Min(maxY, _viewTranslateTransform.Y));
     }
 
     // Pointer Events for Dragging & Panning
@@ -200,8 +240,11 @@ public partial class MainWindow : Window
             var pos = e.GetPosition(PreviewBorder);
             var delta = pos - _lastPointerPos;
             
+            // Calculate proposed
             _viewTranslateTransform!.X += delta.X;
             _viewTranslateTransform!.Y += delta.Y;
+            
+            ClampView();
             
             _lastPointerPos = pos;
             return;

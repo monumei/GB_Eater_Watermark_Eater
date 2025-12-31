@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import './App.css';
 import { ProtectMode, processImage } from './processor';
 
@@ -29,6 +29,8 @@ function App() {
 
   // Cache processed background so we don't re-run protecting on drag
   const processedDataRef = useRef<ImageData | null>(null);
+
+  // Initial load or resize logic could go here, but we rely on "Load Image"
 
   // Initial load or resize logic could go here, but we rely on "Load Image"
 
@@ -136,6 +138,53 @@ function App() {
       
       ctx.restore(); // Restore View Transform
   };
+
+  // Effect to handle non-passive wheel events
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      // Adapt getCanvasCoordinates for native event
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const visualX = (e.clientX - rect.left) * scaleX;
+      const visualY = (e.clientY - rect.top) * scaleY;
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      let newScale = viewTransform.scale * zoomFactor;
+      
+      if (newScale < 0.1) newScale = 0.1;
+      if (newScale > 10) newScale = 10;
+      
+      // Calculate new translate
+      const newX = visualX - (visualX - viewTransform.x) * (newScale / viewTransform.scale);
+      const newY = visualY - (visualY - viewTransform.y) * (newScale / viewTransform.scale);
+      
+      setViewTransform({ scale: newScale, x: newX, y: newY });
+      requestAnimationFrame(renderCanvas);
+    };
+
+    const preventDefault = (e: Event) => e.preventDefault();
+
+    // Wheel must be non-passive to prevent browser zoom
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    
+    // Prevent gesture zoom (Safari/Mac)
+    canvas.addEventListener('gesturestart', preventDefault);
+    canvas.addEventListener('gesturechange', preventDefault);
+    canvas.addEventListener('gestureend', preventDefault);
+
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('gesturestart', preventDefault);
+      canvas.removeEventListener('gesturechange', preventDefault);
+      canvas.removeEventListener('gestureend', preventDefault);
+    };
+  }, [viewTransform, renderCanvas]); // Re-bind when transform changes to capture new state
 
   const handleApply = async () => {
     if (!originalImageRef.current || !canvasRef.current) return;
@@ -257,33 +306,6 @@ function App() {
   const handleMouseUp = () => {
       setIsDragging(false);
       setIsPanning(false);
-  };
-  
-  const handleWheel = (e: React.WheelEvent) => {
-      // Zoom
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const { visualX, visualY } = getCanvasCoordinates(e);
-      // We want the point under mouse (worldX before zoom) to stay under mouse (worldX after zoom)
-      // worldX = (visualX - tx) / scale
-      // visualX = worldX * scale + tx
-      
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      let newScale = viewTransform.scale * zoomFactor;
-      
-      if (newScale < 0.1) newScale = 0.1;
-      if (newScale > 10) newScale = 10;
-      
-      // Calculate new translate
-      // visualX - newTx = (visualX - oldTx) / oldScale * newScale
-      // newTx = visualX - (visualX - oldTx) * (newScale / oldScale)
-      
-      const newX = visualX - (visualX - viewTransform.x) * (newScale / viewTransform.scale);
-      const newY = visualY - (visualY - viewTransform.y) * (newScale / viewTransform.scale);
-      
-      setViewTransform({ scale: newScale, x: newX, y: newY });
-      requestAnimationFrame(renderCanvas);
   };
   
   // Disable context menu for right-click panning
@@ -464,7 +486,6 @@ function App() {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
           onContextMenu={handleContextMenu}
           onTouchStart={handleMouseDown}
           onTouchMove={handleMouseMove}
