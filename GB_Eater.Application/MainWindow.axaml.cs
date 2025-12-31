@@ -455,25 +455,35 @@ public partial class MainWindow : Window
         {
             case ProtectMode.Soft:
                 ApplyBalancedNoise(result, strength / 2, rng);
+                ColorShift(result, strength / 4, rng);
                 break;
             case ProtectMode.Balanced:
                 ApplyBalancedNoise(result, strength, rng);
                 EdgeJitter(result, strength / 2);
+                AdversarialNoise(result, strength / 3, rng);
                 break;
             case ProtectMode.Strong:
                 ApplyBalancedNoise(result, strength, rng);
                 EdgeJitter(result, strength);
                 TextureNoise(result, strength / 2, rng);
+                ColorShift(result, strength / 2, rng);
+                GeometricDistortion(result, strength / 5, rng);
                 break;
             case ProtectMode.AIPoison:
-                // High frequency noise
-                ApplyBalancedNoise(result, strength, rng);
-                // Geometric distortion (Warping)
-                GeometricDistortion(result, strength, rng);
-                // Color shifting
-                ColorShift(result, strength, rng);
-                // Heavy texture
-                TextureNoise(result, strength, rng);
+                // 1. Sine Interference (Global frequency disruption)
+                SineInterference(result, (int)(strength * 0.5));
+            
+                // 2. Geometric distortion (Boosted)
+                GeometricDistortion(result, (int)(strength * 0.5), rng);
+                
+                // 3. Adversarial Noise (Grid High-Freq)
+                AdversarialNoise(result, (int)(strength * 0.8), rng);
+                
+                // 4. Color shifting (Boosted)
+                ColorShift(result, (int)(strength * 0.8), rng);
+                
+                // 5. Block Local Scramble
+                BlockLocalScramble(result, (int)(strength * 0.5), rng);
                 break;
         }
         return result;
@@ -738,11 +748,168 @@ public partial class MainWindow : Window
             if (ptr[i+3] == 0) continue;
             
             // B
-            ptr[i]   = (byte)Clamp(ptr[i] + rShift + rng.Next(-5, 6)); 
+            ptr[i]   = (byte)Clamp(ptr[i] + rShift + rng.Next(-strength/2, strength/2)); 
             // G
-            ptr[i+1] = (byte)Clamp(ptr[i+1] + gShift + rng.Next(-5, 6));
+            ptr[i+1] = (byte)Clamp(ptr[i+1] + gShift + rng.Next(-strength/2, strength/2));
             // R
-            ptr[i+2] = (byte)Clamp(ptr[i+2] + bShift + rng.Next(-5, 6));
+            ptr[i+2] = (byte)Clamp(ptr[i+2] + bShift + rng.Next(-strength/2, strength/2));
+        }
+    }
+
+    unsafe void AdversarialNoise(SKBitmap bmp, int strength, Random rng)
+    {
+        // Advanced Adversarial: Perceptual Masking
+        // We inject strong noise only where the human eye detects "texture/edges" (High Variance),
+        // and keep smooth areas (Low Variance) cleaner. AI relies on texture; we poison it there.
+        
+        int w = bmp.Width;
+        int h = bmp.Height;
+        byte* ptr = (byte*)bmp.GetPixels();
+        
+        int cellSize = 4;
+        int w4 = w * 4;
+        
+        for (int y = 1; y < h; y++)
+        {
+            for (int x = 1; x < w; x++)
+            {
+                int idx = (y * w + x) * 4;
+                if (ptr[idx + 3] == 0) continue;
+
+                // 1. Calculate Local Variance
+                // Use pointers for speed
+                byte r = ptr[idx+2];
+                byte g = ptr[idx+1];
+                byte b = ptr[idx];
+                
+                int leftIdx = idx - 4;
+                int upIdx = idx - w4;
+                
+                // Diff from Left
+                int diffL = Math.Abs(r - ptr[leftIdx+2]) + Math.Abs(g - ptr[leftIdx+1]) + Math.Abs(b - ptr[leftIdx]);
+                // Diff from Up
+                int diffU = Math.Abs(r - ptr[upIdx+2]) + Math.Abs(g - ptr[upIdx+1]) + Math.Abs(b - ptr[upIdx]);
+                
+                int variance = (diffL + diffU) / 2;
+                
+                // 2. Modulate Strength
+                // If high variance, we can hide a lot of noise.
+                float localMult = 0.2f;
+                if (variance > 10) localMult = 1.0f;
+                if (variance > 40) localMult = 2.5f;
+                
+                int effectiveStrength = (int)(strength * localMult);
+
+                // Checkerboard or Grid
+                bool isGrid = (x % cellSize == 0) || (y % cellSize == 0);
+                int cx = x / cellSize;
+                int cy = y / cellSize;
+                bool isCheck = (cx + cy) % 2 == 0;
+
+                if (isGrid) {
+                    // Darken slightly
+                    int factor = (int)(-effectiveStrength * 0.5); 
+                    ptr[idx] = (byte)Clamp(ptr[idx] + factor); // B
+                    ptr[idx+1] = (byte)Clamp(ptr[idx+1] + factor); // G
+                    ptr[idx+2] = (byte)Clamp(ptr[idx+2] + factor); // R
+                } else if (isCheck) {
+                    // Lighten or Color Noise
+                    int factor = (int)(effectiveStrength * 0.4);
+                    // Shift different channels differently
+                    ptr[idx] = (byte)Clamp(ptr[idx] + factor); // B gets +
+                    ptr[idx+1] = (byte)Clamp(ptr[idx+1] - factor); // G gets -
+                    // R unchanged
+                }
+            }
+        }
+    }
+
+    unsafe void SineInterference(SKBitmap bmp, int strength)
+    {
+        int w = bmp.Width;
+        int h = bmp.Height;
+        byte* ptr = (byte*)bmp.GetPixels();
+        
+        float period = 20f;
+        float amp = strength * 0.8f;
+
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int idx = (y * w + x) * 4;
+                if (ptr[idx + 3] == 0) continue;
+                
+                // Diagonal wave
+                float wave = (float)Math.Sin((x + y) / period * Math.PI * 2) * amp;
+                int iWave = (int)wave;
+                
+                ptr[idx] = (byte)Clamp(ptr[idx] + iWave);     // B
+                ptr[idx+1] = (byte)Clamp(ptr[idx+1] + iWave); // G
+                ptr[idx+2] = (byte)Clamp(ptr[idx+2] + iWave); // R
+            }
+        }
+    }
+
+    unsafe void BlockLocalScramble(SKBitmap bmp, int strength, Random rng)
+    {
+        int w = bmp.Width;
+        int h = bmp.Height;
+        byte* ptr = (byte*)bmp.GetPixels();
+
+        int blockSize = Math.Min(6, Math.Max(2, (strength / 10) + 2));
+        
+        // Temp buffer for a block to avoid allocs? 
+        // 6x6 * 4 bytes is tiny. stackalloc.
+        // But strength is dynamic.
+        int maxBlock = 16;
+        uint* blockBuffer = stackalloc uint[maxBlock * maxBlock]; // max 16x16
+        
+        for (int by = 0; by < h; by += blockSize)
+        {
+            for (int bx = 0; bx < w; bx += blockSize)
+            {
+                // Collect
+                int count = 0;
+                for (int y = 0; y < blockSize; y++)
+                {
+                    if (by + y >= h) continue;
+                    for (int x = 0; x < blockSize; x++)
+                    {
+                        if (bx + x >= w) continue;
+                        
+                        int idx = ((by + y) * w + (bx + x)) * 4;
+                        // Read uint pixel
+                        // Little endian: B G R A maps to uint
+                        // Just mimic copy
+                        uint pixel = *(uint*)(ptr + idx);
+                        blockBuffer[count++] = pixel;
+                    }
+                }
+                
+                // Shuffle
+                for (int i = count - 1; i > 0; i--)
+                {
+                    int j = rng.Next(0, i + 1);
+                    uint temp = blockBuffer[i];
+                    blockBuffer[i] = blockBuffer[j];
+                    blockBuffer[j] = temp;
+                }
+                
+                // Write back
+                int writeIdx = 0;
+                for (int y = 0; y < blockSize; y++)
+                {
+                    if (by + y >= h) continue;
+                    for (int x = 0; x < blockSize; x++)
+                    {
+                        if (bx + x >= w) continue;
+                        
+                        int idx = ((by + y) * w + (bx + x)) * 4;
+                        *(uint*)(ptr + idx) = blockBuffer[writeIdx++];
+                    }
+                }
+            }
         }
     }
 }

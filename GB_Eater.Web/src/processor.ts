@@ -40,19 +40,21 @@ export function processImage(
       // 0. Heavy Texture first (reusing logic later? No, order matters)
       // C# AIPoison: Balanced -> Geometric -> Color -> Texture
       
-      // 1. Balanced (High freq noise)
-      applyBalancedNoise(data, strength, nextRandom);
-      
-      // 2. Geometric Distortion
-      // Need to write to a temp buffer or copy
+      // 1. Sine Interference (Global frequency disruption)
+      sineInterference(data, width, height, strength * 0.5);
+
+      // 2. Geometric Distortion (Maximized)
       const copy = new Uint8ClampedArray(data);
-      geometricDistortion(data, copy, width, height, strength, nextRandomFloat);
+      geometricDistortion(data, copy, width, height, strength * 0.5, nextRandomFloat);
       
-      // 3. Color Shift
-      colorShift(data, strength, nextRandom);
+      // 3. Adversarial Pattern
+      adversarialNoise(data, width, height, strength * 0.8, nextRandom);
+
+      // 4. Color Shift (Boosted)
+      colorShift(data, strength * 0.8, nextRandom);
       
-      // 4. Heavy Texture
-      textureNoise(data, width, height, strength, nextRandom);
+      // 5. Block Local Scramble (Destroys local gradients)
+      blockLocalScramble(data, width, height, strength * 0.5, nextRandom);
       
       ctx.putImageData(imageData, 0, 0);
       return;
@@ -65,26 +67,25 @@ export function processImage(
   // ratio = (val+noise)/val
   // r *= ratio, etc.
 
+  // 1. Balanced Noise (Soft, Balanced, Strong)
   const noiseStrength =
     mode === ProtectMode.Soft ? Math.floor(strength / 2) : strength;
 
   applyBalancedNoise(data, noiseStrength, nextRandom);
 
-  // 2. Edge Jitter (Balanced, Strong)
-  if (mode >= ProtectMode.Balanced) {
-    // jitterStrength removed as it was unused logic in original C# too
-    // Original C# passed "strength/2" or "strength".
-    // But the C# EdgeJitter implementation loop:
-    // if ((x+y)%4 != 0) continue
-    // Move pixel (x,y) to (x+1, y)
-    // It didn't actually use 'strength' inside the loop logic?
-    // Wait, looking at C# code: `Bitmap EdgeJitter(Bitmap src, int strength)`
-    // `if ((x + y) % 4 != 0) continue;`
-    // `Color c = bmp.GetPixel(x, y); bmp.SetPixel(x + 1, y, c);`
-    // It completely ignored the `strength` parameter! It just did a fixed visual glitch.
-    // We will replicate that.
+  // New: Chroma Noise for Soft
+  if (mode === ProtectMode.Soft) {
+      colorShift(data, Math.floor(strength / 4), nextRandom);
+  }
 
-    // We need a copy to read from because we are shifting.
+  // 2. Edge Jitter & Adversarial (Balanced, Strong)
+  if (mode >= ProtectMode.Balanced) {
+    
+    // New: Weak Adversarial Grid
+    adversarialNoise(data, width, height, Math.floor(strength / 3), nextRandom);
+
+    // Edge Jitter (Logic mostly unchanged)
+    // jitterStrength removed as it was unused logic in original C# too
     const originalData = new Uint8ClampedArray(data);
 
     for (let y = 1; y < height - 1; y++) {
@@ -102,10 +103,15 @@ export function processImage(
     }
   }
 
-  // 3. Texture Noise (Strong only)
+  // 3. Texture, Color, Geom (Strong only)
   if (mode === ProtectMode.Strong) {
     const texStrength = Math.floor(strength / 2);
     textureNoise(data, width, height, texStrength, nextRandom);
+    
+    // New: Boost Strong mode
+    colorShift(data, Math.floor(strength / 2), nextRandom);
+    const copy = new Uint8ClampedArray(data);
+    geometricDistortion(data, copy, width, height, Math.floor(strength / 5), nextRandomFloat);
   }
 
   ctx.putImageData(imageData, 0, 0);
@@ -199,18 +205,81 @@ function colorShift(data: Uint8ClampedArray, strength: number, nextRandom: (min:
     for (let i = 0; i < data.length; i += 4) {
         if (data[i+3] === 0) continue;
         
-        data[i] = clamp(data[i] + rShift + nextRandom(-5, 5)); // R (actually JS is R,G,B order, C# was B,G,R)
-        // Wait, Canvas ImageData is RGBA. C# Skia was BGRA.
-        // My colorShift logic in C# named variables rShift but applied to ptr[i] which was B.
-        // So rShift was shifting B. 
-        // We will just shift R, G, B channels here randomly.
-        
-        data[i+1] = clamp(data[i+1] + gShift + nextRandom(-5, 5));
-        data[i+2] = clamp(data[i+2] + bShift + nextRandom(-5, 5));
+        // R
+        data[i] = clamp(data[i] + rShift + nextRandom(-strength/2, strength/2)); 
+        // G
+        data[i+1] = clamp(data[i+1] + gShift + nextRandom(-strength/2, strength/2));
+        // B
+        data[i+2] = clamp(data[i+2] + bShift + nextRandom(-strength/2, strength/2));
     }
 }
 
-export function drawWatermark(
+function adversarialNoise(data: Uint8ClampedArray, width: number, height: number, strength: number, nextRandom: (min:number, max:number)=>number) {
+    // Advanced Adversarial: Perceptual Masking
+    // We inject strong noise only where the human eye detects "texture/edges" (High Variance),
+    // and keep smooth areas (Low Variance) cleaner. AI relies on texture; we poison it there.
+    
+    const cellSize = 4;
+    
+    // Pre-calculate luminance for speed or just do simple RGB diff
+    const w4 = width * 4;
+
+    for (let y = 1; y < height; y++) {
+        for (let x = 1; x < width; x++) {
+             const idx = (y * width + x) * 4;
+             if (data[idx + 3] === 0) continue;
+
+             // 1. Calculate Local Variance (Edge Detection)
+             // Simple delta from Left and Up neighbors
+             // |Current - Left| + |Current - Up|
+             const r = data[idx]; const g = data[idx+1]; const b = data[idx+2];
+             
+             const leftIdx = idx - 4;
+             const upIdx = idx - w4;
+             
+             const rL = data[leftIdx]; const gL = data[leftIdx+1]; const bL = data[leftIdx+2];
+             const rU = data[upIdx];   const gU = data[upIdx+1];   const bU = data[upIdx+2];
+
+             const diffL = Math.abs(r - rL) + Math.abs(g - gL) + Math.abs(b - bL);
+             const diffU = Math.abs(r - rU) + Math.abs(g - gU) + Math.abs(b - bU);
+             
+             // Variance score (0 to ~1500 typically).
+             // If variance is high (>30), we are in a texture/edge. 
+             const variance = (diffL + diffU) / 2;
+             
+             // 2. Modulate Strength
+             // Base strength: 20%
+             // Boosted strength: up to 200% if high variance
+             let localMult = 0.2;
+             if (variance > 10) localMult = 1.0;
+             if (variance > 40) localMult = 2.5; // Hide heavy noise in chaos
+             
+             const effectiveStrength = strength * localMult;
+
+             // 3. Grid Pattern Injection
+             const isGrid = (x % cellSize === 0) || (y % cellSize === 0);
+             const cx = Math.floor(x / cellSize);
+             const cy = Math.floor(y / cellSize);
+             const isCheck = (cx + cy) % 2 === 0;
+
+             if (isGrid) {
+                 // Darken
+                 const factor = -effectiveStrength * 0.5; 
+                 data[idx] = clamp(data[idx] + factor);
+                 data[idx+1] = clamp(data[idx+1] + factor);
+                 data[idx+2] = clamp(data[idx+2] + factor);
+             } else if (isCheck) {
+                 // Color Scramble
+                 const factor = effectiveStrength * 0.4;
+                 data[idx] = clamp(data[idx] + factor); // R boosted
+                 data[idx+1] = clamp(data[idx+1] - factor); // G reduced
+                 // B unchanged or noisy
+             }
+        }
+    }
+}
+
+export default function drawWatermark(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -246,4 +315,79 @@ export function drawWatermark(
     }
   }
   ctx.restore();
+}
+
+function sineInterference(data: Uint8ClampedArray, width: number, height: number, strength: number) {
+    const period = 20; // Pixels per wave
+    const amp = strength * 0.8;
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            if (data[idx+3] === 0) continue;
+            
+            // Diagonal wave
+            const wave = Math.sin((x + y) / period * Math.PI * 2) * amp;
+            
+            data[idx] = clamp(data[idx] + wave);
+            data[idx+1] = clamp(data[idx+1] + wave);
+            data[idx+2] = clamp(data[idx+2] + wave);
+        }
+    }
+}
+
+function blockLocalScramble(data: Uint8ClampedArray, width: number, height: number, strength: number, nextRandom: (min:number, max:number)=>number) {
+    // Scramble pixels within NxN blocks
+    // Higher strength -> Larger blocks (up to 4 or 5)
+    // This destroys CNN kernel features
+    const blockSize = Math.min(6, Math.max(2, Math.floor(strength / 10) + 2)); 
+    
+    // We process block by block
+    for (let by = 0; by < height; by += blockSize) {
+        for (let bx = 0; bx < width; bx += blockSize) {
+            
+            // Collect pixels in this block
+            const pixels: number[] = [];
+            const coords: number[] = [];
+            
+            for (let y = 0; y < blockSize; y++) {
+                if (by + y >= height) continue;
+                for (let x = 0; x < blockSize; x++) {
+                    if (bx + x >= width) continue;
+                    
+                    const idx = ((by + y) * width + (bx + x)) * 4;
+                    coords.push(idx);
+                    pixels.push(data[idx], data[idx+1], data[idx+2], data[idx+3]);
+                }
+            }
+            
+            // Shuffle
+            // Fisher-Yates inside the block
+            // Note: We shuffle entire pixels (RGBA group)
+            const count = coords.length;
+            
+            // Create permutation
+            const perm = new Uint32Array(count);
+            for(let i=0; i<count; i++) perm[i] = i;
+            
+            // Shuffle logic
+            for (let i = count - 1; i > 0; i--) {
+                const j = Math.floor(nextRandom(0, i)); // 0 to i
+                const temp = perm[i];
+                perm[i] = perm[j];
+                perm[j] = temp;
+            }
+            
+            // Apply back
+            for (let i = 0; i < count; i++) {
+                const destIdx = coords[i];
+                const srcIdx = perm[i] * 4; // *4 because 'pixels' array is flat byte array
+                
+                data[destIdx] = pixels[srcIdx];
+                data[destIdx+1] = pixels[srcIdx+1];
+                data[destIdx+2] = pixels[srcIdx+2];
+                data[destIdx+3] = pixels[srcIdx+3];
+            }
+        }
+    }
 }
