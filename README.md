@@ -14,7 +14,19 @@ This is a cross-platform port of the GB Eater Watermark tool, built using **Aval
 
 - .NET 8 SDK
 
-### Command Line
+### Quick Run Script
+
+You can use the helper script to run either version:
+
+```bash
+# Run Desktop App
+./run.sh desktop
+
+# Run Web App
+./run.sh web
+```
+
+### Manual Command Line (Desktop)
 
 1. Open a terminal in this directory.
 2. Run:
@@ -32,10 +44,10 @@ dotnet publish -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=tru
 
 ### Web Version
 
-A modern web-based version is available in the `GB_Eater_Web` directory.
-To run it:
+A modern web-based version is available in the `GB_Eater.Web` directory.
+To run it manually:
 
 ```bash
-cd GB_Eater_Web
+cd GB_Eater.Web
 bun run dev
 ```
