@@ -4,15 +4,34 @@ This is a cross-platform port of the GB Eater Watermark tool, built using **Aval
 
 ## Features
 
-- **AI Disruption**: Adds pixel noise patterns (Soft, Balanced, Strong) to disrupt AI training on your images.
-- **Watermarking**: Tiled circular watermarks ("DO NOT TRAIN") to further protect your art.
-- **Cross-Platform**: Runs natively on your Mac.
+- **Advanced AI Disruption**:
+  - **Poison Mode**: Uses a multi-stage attack including **Sine Interference**, **Geometric Distortion**, **High-Frequency Grid Injection**, and **Block Scrambling** to severely disrupt AI feature extraction.
+  - **Standard Modes**: Soft, Balanced, and Strong noise patterns for varying levels of visual impact.
+- **Smart Watermarking**:ß
+  - **Custom Images**: Drag, drop, and position your own watermark images (Desktop).
+- **Interactive Preview**: Zoom and Pan to inspect pixel-level details of the protection (Desktop).
+- **Cross-Platform**: Optimized for macOS (Apple Silicon native), Windows, and Web.
+
+## About This Project
+
+This tool was developed in response to the increasing scraping of artwork on platforms like X. It creates a defensive layer for your images by combining visible watermarks with **adversarial pixel noise**.
+
+**Current Status:**
+
+- Tested against **Grok** with observed success in disrupting image analysis.
+- _Note:_ Broader testing against other models has been limited to minimize risk to personal artwork during the development phase.
+
+### Mechanism of Action
+
+The software injects high-frequency, randomized pixel noise into the image. This process uses a random seed, ensuring that even if the same image is processed twice, the noise pattern will be mathematically unique.
+
+> **Disclaimer**: While this method may not completely prevent a model from training on your data, it significantly degrades the quality of the input ("poisoning"), aiming to disrupt inference and "annoy" the model's feature extraction process.
 
 ## How to Run
 
 ### Prerequisites
 
-- .NET 8 SDK
+- .NET 10 SDK
 
 ### Quick Run Script
 
