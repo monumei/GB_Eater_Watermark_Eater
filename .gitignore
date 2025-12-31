@@ -56,3 +56,6 @@ env/
 .vs/
 packages/
 TestResults/
+
+# Releases
+Releases/
