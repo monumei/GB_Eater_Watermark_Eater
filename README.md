@@ -19,7 +19,7 @@ This is a cross-platform port of the GB Eater Watermark tool, built using **Aval
 1. Open a terminal in this directory.
 2. Run:
    ```bash
-   dotnet run
+   dotnet run --project GB_Eater.Windows
    ```
 
 ### Publishing (Create standalone app)
