@@ -1,6 +1,6 @@
 import { useState, useRef, type ChangeEvent } from 'react';
 import './App.css';
-import { ProtectMode, processImage, drawWatermark } from './processor';
+import { ProtectMode, processImage } from './processor';
 
 function App() {
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -10,11 +10,19 @@ function App() {
   const [mode, setMode] = useState<ProtectMode>(ProtectMode.Balanced);
   const [strength, setStrength] = useState(25);
   const [useWatermark, setUseWatermark] = useState(false);
-  const [watermarkText, setWatermarkText] = useState("DO NOT TRAIN");
   const [opacity, setOpacity] = useState(0.2);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
+  
+  // New State for Image Watermark
+  const [watermarkImg, setWatermarkImg] = useState<HTMLImageElement | null>(null);
+  const [watermarkPos, setWatermarkPos] = useState({ x: 50, y: 50 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  
+  // Cache processed background so we don't re-run protecting on drag
+  const processedDataRef = useRef<ImageData | null>(null);
 
   // Initial load or resize logic could go here, but we rely on "Load Image"
 
@@ -28,11 +36,32 @@ function App() {
         img.onload = () => {
           originalImageRef.current = img;
           setImageLoaded(true);
+          processedDataRef.current = null; // Reset cache
           resetCanvas(img);
         };
         img.src = event.target?.result as string;
       };
       
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleWatermarkImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          setWatermarkImg(img);
+          setUseWatermark(true);
+          // Default pos
+          setWatermarkPos({ x: (canvasRef.current?.width || 500) / 2 - img.width/2, y: (canvasRef.current?.height || 500) / 2 - img.height/2 });
+          requestAnimationFrame(renderCanvas);
+        };
+        img.src = event.target?.result as string;
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -51,12 +80,41 @@ function App() {
     ctx.drawImage(img, 0, 0);
   };
 
+  const renderCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // 1. Draw Background (Processed or Original)
+      if (processedDataRef.current) {
+          ctx.putImageData(processedDataRef.current, 0, 0);
+      } else if (originalImageRef.current) {
+          // If no processed data, just draw original
+          ctx.drawImage(originalImageRef.current, 0, 0, canvas.width, canvas.height);
+      }
+      
+      
+      // 2. Tiled Text Watermark - REMOVED per user request
+      
+      // 3. Image Watermark
+      if (useWatermark && watermarkImg) {
+          ctx.save();
+          ctx.globalAlpha = opacity;
+          ctx.drawImage(watermarkImg, watermarkPos.x, watermarkPos.y);
+          ctx.restore();
+          
+          if (useWatermark && watermarkImg) {
+             // Draw border if dragging or hovering? Maybe just simple for now.
+          }
+      }
+  };
+
   const handleApply = async () => {
     if (!originalImageRef.current || !canvasRef.current) return;
     
     setProcessing(true);
 
-    // Allow UI to update before heavy processing
     setTimeout(() => {
       const img = originalImageRef.current!;
       const canvas = canvasRef.current!;
@@ -67,17 +125,74 @@ function App() {
       ctx.drawImage(img, 0, 0);
 
       // 2. Apply Noise/Protection
-      // We use a random seed. JS simplified version used in processor.ts
       const seed = Math.floor(Math.random() * 10000);
       processImage(ctx, canvas.width, canvas.height, mode, strength, seed);
+      
+      // Cache the result
+      processedDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // 3. Apply Watermark
-      if (useWatermark) {
-        drawWatermark(ctx, canvas.width, canvas.height, watermarkText, opacity);
-      }
+      // 3. Render Watermarks
+      renderCanvas();
 
       setProcessing(false);
     }, 50);
+  };
+  
+  // Canvas Interaction
+  const getCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
+      let clientX, clientY;
+      if ('touches' in e) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+      } else {
+          clientX = (e as React.MouseEvent).clientX;
+          clientY = (e as React.MouseEvent).clientY;
+      }
+      
+      return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+      };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+      if (!useWatermark || !watermarkImg) return;
+      
+      const { x, y } = getCanvasCoordinates(e);
+      
+      // Check hit
+      const w = watermarkImg.width;
+      const h = watermarkImg.height;
+      if (x >= watermarkPos.x && x <= watermarkPos.x + w &&
+          y >= watermarkPos.y && y <= watermarkPos.y + h) {
+          
+          setIsDragging(true);
+          dragOffset.current = { x: x - watermarkPos.x, y: y - watermarkPos.y };
+      }
+  };
+  
+  const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
+      if (!isDragging || !watermarkImg) return;
+      e.preventDefault(); // Prevent scrolling on touch
+      
+      const { x, y } = getCanvasCoordinates(e);
+      setWatermarkPos({
+          x: x - dragOffset.current.x,
+          y: y - dragOffset.current.y
+      });
+      
+      requestAnimationFrame(renderCanvas);
+  };
+  
+  const handleMouseUp = () => {
+      setIsDragging(false);
   };
 
   const handleSave = () => {
@@ -136,6 +251,7 @@ function App() {
             <option value={ProtectMode.Soft}>Soft</option>
             <option value={ProtectMode.Balanced}>Balanced</option>
             <option value={ProtectMode.Strong}>Strong</option>
+            <option value={ProtectMode.AIPoison}>AI Poison (Slow)</option>
           </select>
         </div>
 
@@ -171,12 +287,16 @@ function App() {
         {useWatermark && (
           <>
             <div className="control-group">
-              <input 
-                type="text" 
-                value={watermarkText} 
-                onChange={(e) => setWatermarkText(e.target.value)} 
-                placeholder="Watermark Text"
-              />
+               <label className="btn" style={{ position: 'relative', overflow: 'hidden', marginTop: '10px' }}>
+                 Upload Signature/Logo
+                 <input 
+                   type="file" 
+                   accept="image/*" 
+                   onChange={handleWatermarkImageUpload} 
+                   className="sr-only"
+                 />
+               </label>
+               {watermarkImg && <button onClick={() => { setWatermarkImg(null); requestAnimationFrame(renderCanvas); }} style={{fontSize:'0.8em', marginTop:'5px'}}>Remove Image</button>}
             </div>
             
             <div className="control-group">
@@ -190,7 +310,10 @@ function App() {
                 max="1" 
                 step="0.01" 
                 value={opacity} 
-                onChange={(e) => setOpacity(Number(e.target.value))} 
+                onChange={(e) => {
+                    setOpacity(Number(e.target.value));
+                    requestAnimationFrame(renderCanvas);
+                }} 
               />
             </div>
           </>
@@ -222,7 +345,14 @@ function App() {
         <canvas 
           ref={canvasRef} 
           className="preview-canvas"
-          style={{ display: imageLoaded ? 'block' : 'none' }}
+          style={{ display: imageLoaded ? 'block' : 'none', cursor: (useWatermark && watermarkImg) ? 'move' : 'default' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleMouseDown}
+          onTouchMove={handleMouseMove}
+          onTouchEnd={handleMouseUp}
         />
       </div>
     </div>

@@ -14,6 +14,12 @@ public partial class MainWindow : Window
 {
     private SKBitmap? _originalImage;
     private SKBitmap? _protectedImage;
+    private SKBitmap? _watermarkBitmap;
+    
+    // Dragging state
+    private bool _isDraggingWatermark = false;
+    private Avalonia.Point _lastPointerPos;
+    private Avalonia.Media.TranslateTransform _watermarkTransform = new Avalonia.Media.TranslateTransform();
 
     // Enum for convenience
     enum ProtectMode { Soft = 0, Balanced = 1, Strong = 2, AIPoison = 3 }
@@ -21,6 +27,96 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        
+        // Ensure Transform is set
+        WatermarkOverlay.RenderTransform = _watermarkTransform;
+    }
+
+    private async void OnUploadWatermarkClick(object? sender, RoutedEventArgs e)
+    {
+         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open Watermark Image",
+            AllowMultiple = false,
+            FileTypeFilter = new[] { FilePickerFileTypes.ImageAll }
+        });
+
+        if (files.Count > 0)
+        {
+            var file = files[0];
+            using var stream = await file.OpenReadAsync();
+            
+            _watermarkBitmap?.Dispose();
+            _watermarkBitmap = SKBitmap.Decode(stream);
+            
+            // Display in Overlay
+            using var imgStream = new MemoryStream();
+            _watermarkBitmap.Encode(imgStream, SKEncodedImageFormat.Png, 100);
+            imgStream.Seek(0, SeekOrigin.Begin);
+            
+            WatermarkOverlay.Source = new Bitmap(imgStream);
+            WatermarkOverlay.IsVisible = true;
+            
+            // Center it initially (roughly)
+            _watermarkTransform.X = 50;
+            _watermarkTransform.Y = 50;
+            
+            // Update opacity slider
+            WatermarkOverlay.Opacity = SliderOpacity.Value / 100.0;
+        }
+    }
+
+    // Pointer Events for Dragging
+    private void OnPreviewPointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (!WatermarkOverlay.IsVisible || _watermarkBitmap == null) return;
+
+        var pos = e.GetPosition(PreviewContainer);
+        var pointer = e.GetCurrentPoint(PreviewContainer);
+        
+        // Check if we clicked on the watermark
+        // Watermark Bounds in Panel
+        var w = WatermarkOverlay.Bounds.Width;
+        var h = WatermarkOverlay.Bounds.Height;
+        // The Bounds property might not be updated immediately after Source change if layout hasn't run.
+        // But for interaction it should be fine. 
+        // Better: use _watermarkTransform.X/Y and known size? 
+        // Actually Bounds.X/Y is 0,0 because of alignment, Transform shifts it.
+        
+        // Assuming HorizontalAlignment="Left" VerticalAlignment="Top" for WatermarkOverlay
+        double wx = _watermarkTransform.X;
+        double wy = _watermarkTransform.Y;
+        
+        // Approximate hit test
+        if (pos.X >= wx && pos.X <= wx + WatermarkOverlay.Bounds.Width &&
+            pos.Y >= wy && pos.Y <= wy + WatermarkOverlay.Bounds.Height)
+        {
+             _isDraggingWatermark = true;
+             _lastPointerPos = pos;
+             e.Pointer.Capture(PreviewContainer);
+        }
+    }
+
+    private void OnPreviewPointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (!_isDraggingWatermark) return;
+        
+        var pos = e.GetPosition(PreviewContainer);
+        var delta = pos - _lastPointerPos;
+        
+        _watermarkTransform.X += delta.X;
+        _watermarkTransform.Y += delta.Y;
+        
+        _lastPointerPos = pos;
+    }
+
+    private void OnPreviewPointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+    {
+        if (_isDraggingWatermark)
+        {
+            _isDraggingWatermark = false;
+            e.Pointer.Capture(null);
+        }
     }
 
     private async void OnLoadClick(object? sender, RoutedEventArgs e)
@@ -99,7 +195,7 @@ public partial class MainWindow : Window
         // Params
         int strength = (int)SliderStrength.Value;
         bool addWatermark = ChkWatermark.IsChecked ?? false;
-        string watermarkText = TxtWatermark.Text ?? "";
+        // string watermarkText = TxtWatermark.Text ?? ""; // Removed per user request
         float opacity = (float)SliderOpacity.Value / 100f;
         ProtectMode mode = (ProtectMode)CmbMode.SelectedIndex;
 
@@ -110,16 +206,88 @@ public partial class MainWindow : Window
         // 2. Watermark
         if (addWatermark)
         {
-            _protectedImage?.Dispose();
-            _protectedImage = ApplyTiledCircularWatermark(tempBase, watermarkText, opacity, 300, 16);
+            if (_watermarkBitmap != null)
+            {
+                // Image Watermark:
+                // We burn it into _protectedImage for SAVING.
+                // But for DISPLAY, we show the Noise-only image + The Interactive Overlay.
+                _protectedImage?.Dispose();
+                _protectedImage = ApplyImageWatermark(tempBase, _watermarkBitmap, opacity);
+                
+                // Display the noise-only base, so overlay sits on top without duplication
+                DisplayImage(tempBase);
+            }
+            else
+            {
+               // No text watermark support anymore. 
+               // Just treat as separate layer or nothing?
+               // If user checked "Add Watermark" but didn't upload image, effectively nothing happens or just noise protection.
+               _protectedImage?.Dispose();
+               _protectedImage = tempBase.Copy();
+               DisplayImage(_protectedImage);
+            }
         }
         else
         {
             _protectedImage?.Dispose();
             _protectedImage = tempBase.Copy();
+            DisplayImage(_protectedImage);
         }
 
-        DisplayImage(_protectedImage);
+        // Also update overlay opacity just in case
+        if (WatermarkOverlay.IsVisible)
+        {
+            WatermarkOverlay.Opacity = opacity;
+        }
+    }
+
+    SKBitmap ApplyImageWatermark(SKBitmap baseImg, SKBitmap watermark, float opacity)
+    {
+        SKBitmap result = baseImg.Copy();
+        using (SKCanvas canvas = new SKCanvas(result))
+        {
+            // Map visual coordinates to image coordinates
+            // 1. Get Visual Bounds of the displayed image
+            var panelSize = PreviewContainer.Bounds.Size;
+            var imgSize = new Avalonia.Size(baseImg.Width, baseImg.Height);
+            
+            // Uniform Stretch logic
+            double scaleX = panelSize.Width / imgSize.Width;
+            double scaleY = panelSize.Height / imgSize.Height;
+            double scale = Math.Min(scaleX, scaleY);
+            
+            double displayedW = imgSize.Width * scale;
+            double displayedH = imgSize.Height * scale;
+            
+            double offsetX = (panelSize.Width - displayedW) / 2;
+            double offsetY = (panelSize.Height - displayedH) / 2;
+            
+            // Watermark visual pos
+            double wx = _watermarkTransform.X;
+            double wy = _watermarkTransform.Y;
+            
+            // Relative to image visual
+            double relX = wx - offsetX;
+            double relY = wy - offsetY;
+            
+            // Map to actual image coords
+            double finalX = relX / scale;
+            double finalY = relY / scale;
+            
+            // Draw
+            using var paint = new SKPaint
+            {
+                Color = SKColors.White.WithAlpha((byte)(opacity * 255)),
+                IsAntialias = true,
+                FilterQuality = SKFilterQuality.High
+            };
+            
+            // Note: If opacity is applied via Paint.Color Alpha, it tints the image?
+            // No, DrawBitmap with Paint applies alpha modulation if Color is white.
+            
+            canvas.DrawBitmap(watermark, (float)finalX, (float)finalY, paint);
+        }
+        return result;
     }
 
     private void DisplayImage(SKBitmap? bmp)

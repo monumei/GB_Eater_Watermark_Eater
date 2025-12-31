@@ -39,8 +39,9 @@
                 <Separator Background="#444"/>
                 
                 <CheckBox Name="ChkWatermark" Content="Add Watermark" IsChecked="False"/>
-                <TextBox Name="TxtWatermark" Watermark="Watermark Text" Text="DO NOT TRAIN" IsEnabled="{Binding #ChkWatermark.IsChecked}"/>
-                
+                <!-- Text Watermark Removed -->
+                <Button Name="BtnUploadWatermark" Content="📂 Upload Logo/Sig" Click="OnUploadWatermarkClick" IsEnabled="{Binding #ChkWatermark.IsChecked}" Margin="0,5,0,0"/>
+
                 <DockPanel>
                     <TextBlock Text="Opacity:" DockPanel.Dock="Left"/>
                     <TextBlock Text="{Binding #SliderOpacity.Value, StringFormat={}{0:0}}%" DockPanel.Dock="Right" FontWeight="Bold"/>
@@ -57,8 +58,15 @@
         </Border>
 
         <!-- Preview -->
-        <Border Grid.Column="1" Margin="10,0,0,0" Background="#1E1E1E" CornerRadius="8" ClipToBounds="True" Padding="10">
-             <Image Name="PreviewImage" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        <Border Grid.Column="1" Margin="10,0,0,0" Background="#1E1E1E" CornerRadius="8" ClipToBounds="True" Padding="10" Name="PreviewBorder">
+             <Panel Name="PreviewContainer" Background="Transparent" PointerPressed="OnPreviewPointerPressed" PointerMoved="OnPreviewPointerMoved" PointerReleased="OnPreviewPointerReleased">
+                 <Image Name="PreviewImage" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                 <Image Name="WatermarkOverlay" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="False" Opacity="0.8">
+                     <Image.RenderTransform>
+                        <TranslateTransform X="0" Y="0"/>
+                     </Image.RenderTransform>
+                 </Image>
+             </Panel>
         </Border>
     </Grid>
 </Window>
