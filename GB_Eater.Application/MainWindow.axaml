@@ -26,6 +26,7 @@
                     <ComboBoxItem>Soft</ComboBoxItem>
                     <ComboBoxItem>Balanced</ComboBoxItem>
                     <ComboBoxItem>Strong</ComboBoxItem>
+                    <ComboBoxItem>AI Poison (Slow)</ComboBoxItem>
                 </ComboBox>
                 
                 <DockPanel>

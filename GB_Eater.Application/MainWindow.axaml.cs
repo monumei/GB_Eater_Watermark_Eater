@@ -16,7 +16,7 @@ public partial class MainWindow : Window
     private SKBitmap? _protectedImage;
 
     // Enum for convenience
-    enum ProtectMode { Soft = 0, Balanced = 1, Strong = 2 }
+    enum ProtectMode { Soft = 0, Balanced = 1, Strong = 2, AIPoison = 3 }
 
     public MainWindow()
     {
@@ -162,6 +162,16 @@ public partial class MainWindow : Window
                 ApplyBalancedNoise(result, strength, rng);
                 EdgeJitter(result, strength);
                 TextureNoise(result, strength / 2, rng);
+                break;
+            case ProtectMode.AIPoison:
+                // High frequency noise
+                ApplyBalancedNoise(result, strength, rng);
+                // Geometric distortion (Warping)
+                GeometricDistortion(result, strength, rng);
+                // Color shifting
+                ColorShift(result, strength, rng);
+                // Heavy texture
+                TextureNoise(result, strength, rng);
                 break;
         }
         return result;
@@ -355,5 +365,82 @@ public partial class MainWindow : Window
             }
         }
         return bmp;
+    }
+
+    unsafe void GeometricDistortion(SKBitmap bmp, int strength, Random rng)
+    {
+        // Sinusoidal warp: x' = x + A * sin(freq * y + phase)
+        // This breaks edge detection and grid-based feature extractors (ViT)
+        
+        SKBitmap copy = bmp.Copy();
+        // Read from copy, write to bmp
+        uint* srcPtr = (uint*)copy.GetPixels();
+        uint* destPtr = (uint*)bmp.GetPixels();
+        
+        int w = bmp.Width;
+        int h = bmp.Height;
+        
+        float ampX = strength * 0.5f; // Amplitude
+        float freqX = 0.05f + (float)rng.NextDouble() * 0.1f; // Frequency
+        float phaseX = (float)rng.NextDouble() * 10f;
+        
+        float ampY = strength * 0.5f;
+        float freqY = 0.05f + (float)rng.NextDouble() * 0.1f;
+        float phaseY = (float)rng.NextDouble() * 10f;
+
+        for (int y = 0; y < h; y++)
+        {
+            // Vertical offset for this row
+            // (Actually we should do pixel by pixel or row by row shift)
+            // Just shifting pixels
+            
+            for (int x = 0; x < w; x++)
+            {
+                // Calculate source position
+                float offX = ampX * (float)Math.Sin(freqX * y + phaseX);
+                float offY = ampY * (float)Math.Cos(freqY * x + phaseY);
+                
+                int sx = ClampCoord(x + (int)offX, w);
+                int sy = ClampCoord(y + (int)offY, h);
+                
+                destPtr[y * w + x] = srcPtr[sy * w + sx];
+            }
+        }
+        
+        copy.Dispose();
+    }
+    
+    int ClampCoord(int v, int max)
+    {
+        if (v < 0) return 0;
+        if (v >= max) return max - 1;
+        return v;
+    }
+
+    unsafe void ColorShift(SKBitmap bmp, int strength, Random rng)
+    {
+        // Randomly shift RGB relationships in local blocks
+        int w = bmp.Width;
+        int h = bmp.Height;
+        byte* ptr = (byte*)bmp.GetPixels();
+        int len = w * h * 4;
+        
+        // Global shift factor
+        int rShift = rng.Next(-strength, strength); // Blue shift actually (B G R A)
+        int gShift = rng.Next(-strength, strength);
+        int bShift = rng.Next(-strength, strength);
+
+        for (int i = 0; i < len; i += 4)
+        {
+            // Skip alpha 0
+            if (ptr[i+3] == 0) continue;
+            
+            // B
+            ptr[i]   = (byte)Clamp(ptr[i] + rShift + rng.Next(-5, 6)); 
+            // G
+            ptr[i+1] = (byte)Clamp(ptr[i+1] + gShift + rng.Next(-5, 6));
+            // R
+            ptr[i+2] = (byte)Clamp(ptr[i+2] + bShift + rng.Next(-5, 6));
+        }
     }
 }
