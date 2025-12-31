@@ -18,8 +18,12 @@ public partial class MainWindow : Window
     
     // Dragging state
     private bool _isDraggingWatermark = false;
+    private bool _isPanningView = false;
     private Avalonia.Point _lastPointerPos;
-    private Avalonia.Media.TranslateTransform _watermarkTransform = new Avalonia.Media.TranslateTransform();
+    private Avalonia.Media.TranslateTransform _watermarkTranslateTransform = new Avalonia.Media.TranslateTransform();
+    private Avalonia.Media.ScaleTransform _watermarkScaleTransform = new Avalonia.Media.ScaleTransform();
+    private Avalonia.Media.ScaleTransform? _viewScaleTransform;
+    private Avalonia.Media.TranslateTransform? _viewTranslateTransform;
 
     // Enum for convenience
     enum ProtectMode { Soft = 0, Balanced = 1, Strong = 2, AIPoison = 3 }
@@ -28,8 +32,26 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         
-        // Ensure Transform is set
-        WatermarkOverlay.RenderTransform = _watermarkTransform;
+        // Initialize Watermark Transforms from XAML Group
+        if (WatermarkOverlay.RenderTransform is Avalonia.Media.TransformGroup wGroup)
+        {
+             _watermarkScaleTransform = wGroup.Children[0] as Avalonia.Media.ScaleTransform ?? new Avalonia.Media.ScaleTransform();
+             _watermarkTranslateTransform = wGroup.Children[1] as Avalonia.Media.TranslateTransform ?? new Avalonia.Media.TranslateTransform();
+        }
+
+        // Retrieve View Transforms manually since code-gen might fail for nested named items in TransformGroup
+        // Structure in XAML: Panel_RenderTransform -> TransformGroup -> [Scale, Translate]
+        if (PreviewContainer.RenderTransform is Avalonia.Media.TransformGroup group)
+        {
+             _viewScaleTransform = group.Children[0] as Avalonia.Media.ScaleTransform;
+             _viewTranslateTransform = group.Children[1] as Avalonia.Media.TranslateTransform;
+        }
+
+        // Event for Slider
+        SliderWatermarkSize.ValueChanged += (s, e) => {
+            _watermarkScaleTransform.ScaleX = e.NewValue;
+            _watermarkScaleTransform.ScaleY = e.NewValue;
+        };
     }
 
     private async void OnUploadWatermarkClick(object? sender, RoutedEventArgs e)
@@ -58,56 +80,147 @@ public partial class MainWindow : Window
             WatermarkOverlay.IsVisible = true;
             
             // Center it initially (roughly)
-            _watermarkTransform.X = 50;
-            _watermarkTransform.Y = 50;
+            _watermarkTranslateTransform.X = 50;
+            _watermarkTranslateTransform.Y = 50;
             
             // Update opacity slider
             WatermarkOverlay.Opacity = SliderOpacity.Value / 100.0;
         }
     }
 
-    // Pointer Events for Dragging
+    private void OnPreviewPointerWheelChanged(object? sender, Avalonia.Input.PointerWheelEventArgs e)
+    {
+
+        
+        // Simple Zoom
+        if (_viewScaleTransform == null || _viewTranslateTransform == null) return;
+
+        var zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
+        
+        var currentScale = _viewScaleTransform.ScaleX;
+        var newScale = currentScale * zoomFactor;
+        
+        // Limit zoom
+        if (newScale < 0.1) newScale = 0.1;
+        if (newScale > 10) newScale = 10;
+        
+        // Zoom towards pointer
+        // 1. Get pointer relative to the container (Panel)
+        // If we just scale the container, the point under cursor changes.
+        // We want point under cursor to stay static.
+        
+        // Actually, easiest is to just Scale around Center? 
+        // Or specific logic.
+        
+        // To zoom around pointer:
+        // P_new = P_old * scale_change + T_new - T_old... tricky with transform group.
+        
+        // Let's rely on RenderTransformOrigin behavior or manual calc.
+        // The container is the target.
+        // But PreviewContainer RenderTransformOrigin is 0.5,0.5 by default?
+        // Let's just adjust Scale and Translate manually.
+        
+        // Position relative to Border (viewport)
+        var pointerPos = e.GetPosition(PreviewBorder);
+        
+        // Relative to Content (before new zoom)
+        var relativePos = e.GetPosition(PreviewContainer); // This is in Local Space
+        
+        _viewScaleTransform.ScaleX = newScale;
+        _viewScaleTransform.ScaleY = newScale;
+        
+        // Adjust translation to keep relativePos at pointerPos
+        // We need the Point in Parent coords.
+        // P_screen = P_local * Scale + Translate
+        // We want P_screen to stay same for P_local.
+        // Translate = P_screen - (P_local * Scale)
+        
+        // P_local is e.GetPosition(PreviewContainer) *relative to bounds 0,0*
+        // Wait, GetPosition(PreviewContainer) already accounts for current transform invert?
+        // Yes, if we are inside.
+        
+        _viewTranslateTransform.X = pointerPos.X - (relativePos.X * newScale);
+        _viewTranslateTransform.Y = pointerPos.Y - (relativePos.Y * newScale);
+        
+        e.Handled = true;
+    }
+
+    // Pointer Events for Dragging & Panning
     private void OnPreviewPointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
-        if (!WatermarkOverlay.IsVisible || _watermarkBitmap == null) return;
-
-        var pos = e.GetPosition(PreviewContainer);
-        var pointer = e.GetCurrentPoint(PreviewContainer);
+        var props = e.GetCurrentPoint(PreviewContainer).Properties;
         
-        // Check if we clicked on the watermark
-        // Watermark Bounds in Panel
-        var w = WatermarkOverlay.Bounds.Width;
-        var h = WatermarkOverlay.Bounds.Height;
-        // The Bounds property might not be updated immediately after Source change if layout hasn't run.
-        // But for interaction it should be fine. 
-        // Better: use _watermarkTransform.X/Y and known size? 
-        // Actually Bounds.X/Y is 0,0 because of alignment, Transform shifts it.
-        
-        // Assuming HorizontalAlignment="Left" VerticalAlignment="Top" for WatermarkOverlay
-        double wx = _watermarkTransform.X;
-        double wy = _watermarkTransform.Y;
-        
-        // Approximate hit test
-        if (pos.X >= wx && pos.X <= wx + WatermarkOverlay.Bounds.Width &&
-            pos.Y >= wy && pos.Y <= wy + WatermarkOverlay.Bounds.Height)
+        // Right Click or Middle -> Pan
+        if (props.IsRightButtonPressed || props.IsMiddleButtonPressed)
         {
-             _isDraggingWatermark = true;
-             _lastPointerPos = pos;
-             e.Pointer.Capture(PreviewContainer);
+            _isPanningView = true;
+            _lastPointerPos = e.GetPosition(PreviewBorder); // Use Parent coords for panning delta
+            e.Pointer.Capture(PreviewContainer);
+            return;
+        }
+
+        // Left Click -> Check Watermark
+        if (props.IsLeftButtonPressed && WatermarkOverlay.IsVisible && _watermarkBitmap != null)
+        {
+            var pos = e.GetPosition(PreviewContainer);
+            
+            // Assuming HorizontalAlignment="Left" VerticalAlignment="Top" for WatermarkOverlay
+            double wx = _watermarkTranslateTransform.X;
+            double wy = _watermarkTranslateTransform.Y;
+            double scale = _watermarkScaleTransform.ScaleX;
+            
+            // Approximate hit test with scale
+            // The Bounds check gives unscaled bounds usually if Transform is applied at Render level?
+            // Actually Bounds might be unscaled.
+            // Let's use Bitmap size * Scale
+            
+            double w = _watermarkBitmap.Width * scale; // Note: Bitmap pixels vs Display pixels might differ if DPI??
+            // Wait, Avalonia Image size is determined by Source size unless stretched? 
+            // Stretch="None" means it matches source pixel size (logical pixels).
+            // Let's assume logical size ~ bitmap size for simplicity or use WatermarkOverlay.Bounds.Width * scale
+            // But WatermarkOverlay.Bounds changes if layout runs? RenderTransform doesn't affect Layout Bounds usually.
+            
+            double baseW = WatermarkOverlay.Bounds.Width;
+            double baseH = WatermarkOverlay.Bounds.Height;
+            
+            if (pos.X >= wx && pos.X <= wx + (baseW * scale) &&
+                pos.Y >= wy && pos.Y <= wy + (baseH * scale))
+            {
+                 _isDraggingWatermark = true;
+                 _lastPointerPos = pos;
+                 e.Pointer.Capture(PreviewContainer);
+            }
         }
     }
 
     private void OnPreviewPointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
     {
-        if (!_isDraggingWatermark) return;
-        
-        var pos = e.GetPosition(PreviewContainer);
-        var delta = pos - _lastPointerPos;
-        
-        _watermarkTransform.X += delta.X;
-        _watermarkTransform.Y += delta.Y;
-        
-        _lastPointerPos = pos;
+        if (_isPanningView)
+        {
+            var pos = e.GetPosition(PreviewBorder);
+            var delta = pos - _lastPointerPos;
+            
+            _viewTranslateTransform!.X += delta.X;
+            _viewTranslateTransform!.Y += delta.Y;
+            
+            _lastPointerPos = pos;
+            return;
+        }
+    
+        if (_isDraggingWatermark)
+        {
+            // Dragging Watermark relies on LOCAL coordinates inside the Container
+            var pos = e.GetPosition(PreviewContainer);
+            var delta = pos - _lastPointerPos;
+            
+            // Since we use GetPosition(Container), and Container is the matched coordinate space for overlay,
+            // this delta works regardless of Zoom level!
+            
+            _watermarkTranslateTransform.X += delta.X;
+            _watermarkTranslateTransform.Y += delta.Y;
+            
+            _lastPointerPos = pos;
+        }
     }
 
     private void OnPreviewPointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
@@ -115,6 +228,11 @@ public partial class MainWindow : Window
         if (_isDraggingWatermark)
         {
             _isDraggingWatermark = false;
+            e.Pointer.Capture(null);
+        }
+        if (_isPanningView)
+        {
+            _isPanningView = false;
             e.Pointer.Capture(null);
         }
     }
@@ -197,6 +315,7 @@ public partial class MainWindow : Window
         bool addWatermark = ChkWatermark.IsChecked ?? false;
         // string watermarkText = TxtWatermark.Text ?? ""; // Removed per user request
         float opacity = (float)SliderOpacity.Value / 100f;
+        float scale = (float)SliderWatermarkSize.Value;
         ProtectMode mode = (ProtectMode)CmbMode.SelectedIndex;
 
         // 1. Noise Protection
@@ -211,8 +330,9 @@ public partial class MainWindow : Window
                 // Image Watermark:
                 // We burn it into _protectedImage for SAVING.
                 // But for DISPLAY, we show the Noise-only image + The Interactive Overlay.
+                // But for DISPLAY, we show the Noise-only image + The Interactive Overlay.
                 _protectedImage?.Dispose();
-                _protectedImage = ApplyImageWatermark(tempBase, _watermarkBitmap, opacity);
+                _protectedImage = ApplyImageWatermark(tempBase, _watermarkBitmap, opacity, scale);
                 
                 // Display the noise-only base, so overlay sits on top without duplication
                 DisplayImage(tempBase);
@@ -241,7 +361,7 @@ public partial class MainWindow : Window
         }
     }
 
-    SKBitmap ApplyImageWatermark(SKBitmap baseImg, SKBitmap watermark, float opacity)
+    SKBitmap ApplyImageWatermark(SKBitmap baseImg, SKBitmap watermark, float opacity, float scaleVis)
     {
         SKBitmap result = baseImg.Copy();
         using (SKCanvas canvas = new SKCanvas(result))
@@ -263,8 +383,8 @@ public partial class MainWindow : Window
             double offsetY = (panelSize.Height - displayedH) / 2;
             
             // Watermark visual pos
-            double wx = _watermarkTransform.X;
-            double wy = _watermarkTransform.Y;
+            double wx = _watermarkTranslateTransform.X;
+            double wy = _watermarkTranslateTransform.Y;
             
             // Relative to image visual
             double relX = wx - offsetX;
@@ -285,7 +405,21 @@ public partial class MainWindow : Window
             // Note: If opacity is applied via Paint.Color Alpha, it tints the image?
             // No, DrawBitmap with Paint applies alpha modulation if Color is white.
             
-            canvas.DrawBitmap(watermark, (float)finalX, (float)finalY, paint);
+            // Scale the watermark bitmap
+            // Target size in image pixels
+            // displayedW is how wide the base image looks constantly on screen.
+            // Screen watermark size = watermark.Width * scaleVis
+            // We need to map (watermark.Width * scaleVis) back to image coords.
+            
+            // screen_size = image_size * global_scale
+            // image_size = screen_size / global_scale
+            
+            double targetW = (watermark.Width * scaleVis) / scale;
+            double targetH = (watermark.Height * scaleVis) / scale;
+            
+            var destRect = SKRect.Create((float)finalX, (float)finalY, (float)targetW, (float)targetH);
+            
+            canvas.DrawBitmap(watermark, destRect, paint);
         }
         return result;
     }
